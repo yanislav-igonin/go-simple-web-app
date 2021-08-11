@@ -23,7 +23,8 @@ type ErrorData struct {
 
 func (p *Page) save() error {
 	filename := p.Title + ".txt"
-	return ioutil.WriteFile(PAGES_DIR_PATH+filename, p.Body, 0600)
+	path := filepath.Join(PAGES_DIR_PATH, filename)
+	return ioutil.WriteFile(path, p.Body, 0600)
 }
 
 func loadPage(title string) (*Page, error) {
@@ -44,7 +45,9 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.URL.Path[len("/view/"):]
 	p, err := loadPage(title)
 	if err != nil {
-		renderTemplate(w, "error", p)
+		// ed := ErrorData{err.Error()}
+		// renderErrorTemplate(w, ed)
+		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
 		return
 	}
 
@@ -60,9 +63,22 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "edit", p)
 }
 
+func saveHandler(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Path[len("/save/"):]
+	body := r.FormValue("body")
+	p := &Page{Title: title, Body: []byte(body)}
+	p.save()
+	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	t, _ := template.ParseFiles(filepath.Join(TEMPLATES_DIR_PATH, tmpl+".html"))
 	t.Execute(w, p)
+}
+
+func renderErrorTemplate(w http.ResponseWriter, ed ErrorData) {
+	t, _ := template.ParseFiles(filepath.Join(TEMPLATES_DIR_PATH, "error.html"))
+	t.Execute(w, ed)
 }
 
 func main() {
@@ -73,6 +89,6 @@ func main() {
 
 	http.HandleFunc("/view/", viewHandler)
 	http.HandleFunc("/edit/", editHandler)
-	// http.HandleFunc("/save/", saveHandler)
+	http.HandleFunc("/save/", saveHandler)
 	log.Fatal(http.ListenAndServe(":3000", nil))
 }
