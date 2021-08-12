@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const PAGES_DIR_PATH = "../pages"
@@ -41,12 +42,26 @@ func createDir() error {
 	return os.MkdirAll(PAGES_DIR_PATH, os.ModePerm)
 }
 
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	files, err := ioutil.ReadDir(PAGES_DIR_PATH)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var filanames []string
+	for _, f := range files {
+		name := strings.TrimSuffix(f.Name(), filepath.Ext(f.Name()))
+		filanames = append(filanames, name)
+	}
+
+	renderTemplate(w, "index", filanames)
+}
+
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.URL.Path[len("/view/"):]
 	p, err := loadPage(title)
 	if err != nil {
-		// ed := ErrorData{err.Error()}
-		// renderErrorTemplate(w, ed)
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
 		return
 	}
@@ -75,13 +90,13 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
-func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
+func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	t, err := template.ParseFiles(filepath.Join(TEMPLATES_DIR_PATH, tmpl+".html"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	err = t.Execute(w, p)
+	err = t.Execute(w, data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -93,6 +108,7 @@ func main() {
 		panic(err)
 	}
 
+	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/view/", viewHandler)
 	http.HandleFunc("/edit/", editHandler)
 	http.HandleFunc("/save/", saveHandler)
