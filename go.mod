@@ -1,3 +1,3 @@
-module go-simple-web-app
+module go-wiki-tutorial
 
 go 1.15
