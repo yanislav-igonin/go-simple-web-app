@@ -18,3 +18,5 @@
 *.txt
 
 runner-build
+
+build/
