@@ -1,17 +1,29 @@
 package main
 
 import (
+	"errors"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 const PAGES_DIR_PATH = "../pages"
 const TEMPLATES_DIR_PATH = "../templates"
+
+var templates = template.Must(
+	template.ParseFiles(
+		TEMPLATES_DIR_PATH+"/edit.html",
+		TEMPLATES_DIR_PATH+"/view.html",
+		TEMPLATES_DIR_PATH+"/index.html",
+		TEMPLATES_DIR_PATH+"/error.html",
+	),
+)
+var validPath = regexp.MustCompile(`^/(edit|save|view)/(\S+)$`)
 
 type Page struct {
 	Title string
@@ -42,6 +54,15 @@ func createDir() error {
 	return os.MkdirAll(PAGES_DIR_PATH, os.ModePerm)
 }
 
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+	m := validPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		http.NotFound(w, r)
+		return "", errors.New("invalid Page Title")
+	}
+	return m[2], nil // The title is the second subexpression.
+}
+
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	files, err := ioutil.ReadDir(PAGES_DIR_PATH)
 	if err != nil {
@@ -59,7 +80,11 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/view/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
+
 	p, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -70,19 +95,28 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/edit/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
+
 	p, err := loadPage(title)
 	if err != nil {
 		p = &Page{Title: title}
 	}
+
 	renderTemplate(w, "edit", p)
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/save/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
+
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
-	err := p.save()
+	err = p.save()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -91,14 +125,10 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
-	t, err := template.ParseFiles(filepath.Join(TEMPLATES_DIR_PATH, tmpl+".html"))
+	err := templates.ExecuteTemplate(w, tmpl+".html", data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	err = t.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
